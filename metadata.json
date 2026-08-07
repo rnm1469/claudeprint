@@ -1,0 +1,6 @@
+{
+  "name": "P2Print",
+  "description": "Architecture technique de base de la marketplace d'impression 3D P2Print avec rôles Client, Maker, Admin et configuration Supabase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
