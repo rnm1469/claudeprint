@@ -1,12 +1,14 @@
 /**
  * @file src/App.tsx
  * @description Composant racine pour P2Print Marketplace (Vite + React SPA).
- * Contient la disposition globale (Navbar) et la déclaration des routes react-router-dom.
+ * Contient la disposition globale (Navbar) et la déclaration des routes avec protection par rôle.
  */
 
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import ProtectedRoute from './components/ProtectedRoute';
+
 import LoginPage from './routes/auth/LoginPage';
 import SignupPage from './routes/auth/SignupPage';
 import ClientPage from './routes/client/ClientPage';
@@ -24,20 +26,80 @@ export default function App() {
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 sm:p-8">
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/client" element={<ClientPage />} />
-            <Route path="/maker" element={<MakerPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/db" element={<DatabasePage />} />
-            <Route path="/structure" element={<StructurePage />} />
+            
+            {/* Routes d'authentification (redirection si déjà connecté) */}
+            <Route
+              path="/login"
+              element={
+                <ProtectedRoute guestOnly>
+                  <LoginPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/signup"
+              element={
+                <ProtectedRoute guestOnly>
+                  <SignupPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Espace Client (accessible par 'client' et 'admin') */}
+            <Route
+              path="/client"
+              element={
+                <ProtectedRoute allowedRoles={['client', 'admin']}>
+                  <ClientPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Espace Maker (accessible par 'maker' et 'admin') */}
+            <Route
+              path="/maker"
+              element={
+                <ProtectedRoute allowedRoles={['maker', 'admin']}>
+                  <MakerPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Espace Administration (accessible uniquement par 'admin') */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Outils Système (accessible uniquement par 'admin') */}
+            <Route
+              path="/db"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <DatabasePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/structure"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <StructurePage />
+                </ProtectedRoute>
+              }
+            />
+
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>
       </main>
 
       <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-500">
-        P2Print Marketplace • Standard Vite + React SPA Architecture
+        P2Print Marketplace • Protection des Routes par Rôle (Client • Maker • Admin)
       </footer>
     </div>
   );

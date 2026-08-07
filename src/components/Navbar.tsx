@@ -1,9 +1,10 @@
 /**
  * @file src/components/Navbar.tsx
- * @description Barre de navigation et gestion de la session Supabase Auth pour l'application Vite SPA.
+ * @description Barre de navigation pour l'application Vite SPA.
+ * Affiche dynamiquement les onglets et cache les outils système (/db, /structure) aux non-admins.
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   ShoppingBag, 
@@ -19,27 +20,14 @@ import {
   UserCheck
 } from 'lucide-react';
 import { supabaseClient, isSupabaseConfigured } from '../lib/supabase-client';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { useUserRole } from '../hooks/useUserRole';
 
 export default function Navbar() {
-  const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
+  const { user, role } = useUserRole();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    supabaseClient.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const handleSignOut = async () => {
     await supabaseClient.auth.signOut();
-    setCurrentUser(null);
     navigate('/login');
   };
 
@@ -86,11 +74,24 @@ export default function Navbar() {
               )}
             </div>
 
-            {currentUser ? (
+            {user ? (
               <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
                 <div className="flex items-center gap-2 text-xs">
                   <UserCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="text-slate-200 font-medium truncate max-w-[140px]">{currentUser.email}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-200 font-medium truncate max-w-[130px]">{user.email}</span>
+                    {role && (
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono uppercase font-bold border ${
+                        role === 'admin' 
+                          ? 'bg-purple-950 text-purple-300 border-purple-800' 
+                          : role === 'maker' 
+                          ? 'bg-emerald-950 text-emerald-300 border-emerald-800' 
+                          : 'bg-blue-950 text-blue-300 border-blue-800'
+                      }`}>
+                        {role}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={handleSignOut}
@@ -131,31 +132,35 @@ export default function Navbar() {
 
       {/* Navigation Tabs */}
       <nav className="bg-slate-950/60 border border-slate-800 rounded-2xl p-2 flex flex-wrap gap-2">
-        <NavLink
-          to="/login"
-          className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
-            isActive
-              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-          }`}
-        >
-          <LogIn className="w-3.5 h-3.5" />
-          <span>/login</span>
-        </NavLink>
+        {!user && (
+          <>
+            <NavLink
+              to="/login"
+              className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
+                isActive
+                  ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>/login</span>
+            </NavLink>
 
-        <NavLink
-          to="/signup"
-          className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
-            isActive
-              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-          }`}
-        >
-          <UserPlus className="w-3.5 h-3.5" />
-          <span>/signup</span>
-        </NavLink>
+            <NavLink
+              to="/signup"
+              className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
+                isActive
+                  ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>/signup</span>
+            </NavLink>
 
-        <div className="w-px h-5 bg-slate-800 my-auto mx-1 hidden sm:block"></div>
+            <div className="w-px h-5 bg-slate-800 my-auto mx-1 hidden sm:block"></div>
+          </>
+        )}
 
         <NavLink
           to="/client"
@@ -193,31 +198,36 @@ export default function Navbar() {
           <span>/admin</span>
         </NavLink>
 
-        <div className="w-px h-5 bg-slate-800 my-auto mx-1 hidden sm:block"></div>
+        {/* Liens Réservés Strictement aux Administrateurs */}
+        {role === 'admin' && (
+          <>
+            <div className="w-px h-5 bg-slate-800 my-auto mx-1 hidden sm:block"></div>
 
-        <NavLink
-          to="/db"
-          className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
-            isActive
-              ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span>Trigger & SQL</span>
-        </NavLink>
+            <NavLink
+              to="/db"
+              className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
+                isActive
+                  ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>Trigger & SQL</span>
+            </NavLink>
 
-        <NavLink
-          to="/structure"
-          className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
-            isActive
-              ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-          }`}
-        >
-          <FolderTree className="w-3.5 h-3.5" />
-          <span>Arborescence</span>
-        </NavLink>
+            <NavLink
+              to="/structure"
+              className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
+                isActive
+                  ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <FolderTree className="w-3.5 h-3.5" />
+              <span>Arborescence</span>
+            </NavLink>
+          </>
+        )}
       </nav>
     </div>
   );
