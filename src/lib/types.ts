@@ -19,6 +19,14 @@ export interface User {
   created_at: string;
 }
 
+export interface MakerProfile {
+  id: string;
+  business_name: string;
+  bio?: string | null;
+  city?: string | null;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -26,6 +34,11 @@ export interface Database {
         Row: User;
         Insert: Omit<User, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<Omit<User, 'id'>>;
+      };
+      maker_profiles: {
+        Row: MakerProfile;
+        Insert: Omit<MakerProfile, 'created_at'> & { created_at?: string };
+        Update: Partial<Omit<MakerProfile, 'id'>>;
       };
     };
     Enums: {

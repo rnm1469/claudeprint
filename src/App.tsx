@@ -12,6 +12,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './routes/auth/LoginPage';
 import SignupPage from './routes/auth/SignupPage';
 import ClientPage from './routes/client/ClientPage';
+import BecomeMakerPage from './routes/client/BecomeMakerPage';
 import MakerPage from './routes/maker/MakerPage';
 import AdminPage from './routes/admin/AdminPage';
 import DatabasePage from './routes/db/DatabasePage';
@@ -51,6 +52,16 @@ export default function App() {
               element={
                 <ProtectedRoute allowedRoles={['client', 'admin']}>
                   <ClientPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Parcours Devenir Maker (réservé aux 'client') */}
+            <Route
+              path="/client/devenir-maker"
+              element={
+                <ProtectedRoute allowedRoles={['client']}>
+                  <BecomeMakerPage />
                 </ProtectedRoute>
               }
             />

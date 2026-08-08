@@ -25,7 +25,18 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+-- 2. POLITIQUES DE SÉCURITÉ RLS (ROW LEVEL SECURITY)
+GRANT SELECT ON public.users TO authenticated;
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can read own profile" ON public.users;
+CREATE POLICY "Users can read own profile" 
+ON public.users 
+FOR SELECT 
+TO authenticated 
+USING (auth.uid() = id);
+
 `;
 
   const sqlTriggerMigration = `-- 2. TRIGGER AUTOMATIQUE DE PROFIL UTILISATEUR SUR SUPABASE AUTH

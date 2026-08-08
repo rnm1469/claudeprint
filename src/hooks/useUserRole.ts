@@ -14,6 +14,7 @@ export interface UseUserRoleReturn {
   session: Session | null;
   role: UserRole | null;
   loading: boolean;
+  lastError: string | null;
 }
 
 export function useUserRole(): UseUserRoleReturn {
@@ -21,31 +22,49 @@ export function useUserRole(): UseUserRoleReturn {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    async function fetchUserRole(userId: string) {
+    async function fetchUserRole(currentUser: User) {
       try {
+        // Fallback métadonnées Supabase Auth si renseignées
+        const metadataRole = (currentUser.user_metadata?.role || currentUser.app_metadata?.role) as UserRole | undefined;
+
         const { data, error } = await supabaseClient
           .from('users')
           .select('role')
-          .eq('id', userId)
+          .eq('id', currentUser.id)
           .single();
 
         const fetchedRole = (data as { role?: string } | null)?.role;
 
         if (error) {
-          console.warn('Information rôle non trouvée dans public.users:', error.message);
-          if (mounted) setRole('client');
+          const errStr = `Error code ${error.code}: ${error.message} | details: ${error.details || 'none'} | hint: ${error.hint || 'none'}`;
+          console.warn('⚡ [useUserRole] Erreur RLS/Permission lors de la lecture de public.users:', errStr);
+          if (mounted) {
+            setLastError(errStr);
+            setRole(metadataRole || 'client');
+          }
         } else if (fetchedRole) {
-          if (mounted) setRole(fetchedRole as UserRole);
+          if (mounted) {
+            setLastError(null);
+            setRole(fetchedRole as UserRole);
+          }
         } else {
-          if (mounted) setRole('client');
+          if (mounted) {
+            setLastError('No row found in public.users for this user ID');
+            setRole(metadataRole || 'client');
+          }
         }
-      } catch (err) {
-        console.error('Erreur lors de la récupération du rôle:', err);
-        if (mounted) setRole('client');
+      } catch (err: unknown) {
+        const errorObj = err as Error;
+        console.error('Erreur lors de la récupération du rôle:', errorObj);
+        if (mounted) {
+          setLastError(`Catch error: ${errorObj?.message || String(err)}`);
+          setRole('client');
+        }
       }
     }
 
@@ -60,7 +79,7 @@ export function useUserRole(): UseUserRoleReturn {
         }
 
         if (currentSession?.user) {
-          await fetchUserRole(currentSession.user.id);
+          await fetchUserRole(currentSession.user);
         } else {
           if (mounted) setRole(null);
         }
@@ -82,7 +101,7 @@ export function useUserRole(): UseUserRoleReturn {
 
         if (currentSession?.user) {
           setLoading(true);
-          await fetchUserRole(currentSession.user.id);
+          await fetchUserRole(currentSession.user);
           if (mounted) setLoading(false);
         } else {
           setRole(null);
@@ -97,7 +116,7 @@ export function useUserRole(): UseUserRoleReturn {
     };
   }, []);
 
-  return { user, session, role, loading };
+  return { user, session, role, loading, lastError };
 }
 
 export default useUserRole;
