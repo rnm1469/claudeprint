@@ -38,6 +38,7 @@ export interface MakerArticle {
   description?: string | null;
   price: number;
   is_active: boolean;
+  photo_url?: string | null;
   created_at: string;
 }
 

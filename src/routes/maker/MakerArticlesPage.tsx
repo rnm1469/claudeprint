@@ -2,6 +2,7 @@
  * @file src/routes/maker/MakerArticlesPage.tsx
  * @description Page de gestion du catalogue d'articles pour le Maker.
  * Permet de créer, modifier, supprimer et activer/désactiver les articles (figurines, pièces, etc.).
+ * Supporte l'upload et l'affichage de la photo d'un article dans Supabase Storage.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -22,7 +23,8 @@ import {
   Eye,
   EyeOff,
   Coins,
-  FileText
+  Upload,
+  Camera
 } from 'lucide-react';
 import { supabaseClient } from '../../lib/supabase-client';
 import { useUserRole } from '../../hooks/useUserRole';
@@ -43,6 +45,10 @@ export default function MakerArticlesPage() {
   const [description, setDescription] = useState<string>('');
   const [price, setPrice] = useState<string>('');
   const [isActiveForm, setIsActiveForm] = useState<boolean>(true);
+
+  // Fichier photo sélectionné et aperçu
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -87,6 +93,8 @@ export default function MakerArticlesPage() {
     setDescription('');
     setPrice('');
     setIsActiveForm(true);
+    setSelectedFile(null);
+    setImagePreview(null);
     setEditingArticle(null);
     setFormError(null);
     setIsFormOpen(false);
@@ -103,8 +111,35 @@ export default function MakerArticlesPage() {
     setDescription(article.description || '');
     setPrice(String(article.price));
     setIsActiveForm(article.is_active);
+    setSelectedFile(null);
+    setImagePreview(article.photo_url || null);
     setFormError(null);
     setIsFormOpen(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setFormError('Veuillez sélectionner un fichier image valide (JPG, PNG, WebP...).');
+      return;
+    }
+
+    // Limite de taille max : 5 Mo
+    if (file.size > 5 * 1024 * 1024) {
+      setFormError('La taille de la photo ne doit pas dépasser 5 Mo.');
+      return;
+    }
+
+    setFormError(null);
+    setSelectedFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleRemovePhoto = () => {
+    setSelectedFile(null);
+    setImagePreview(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -128,6 +163,35 @@ export default function MakerArticlesPage() {
     setSubmitting(true);
 
     try {
+      let photoUrlToSave: string | null = imagePreview;
+
+      // Upload de la photo vers Supabase Storage si un nouveau fichier est sélectionné
+      if (selectedFile) {
+        const cleanFileName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        // Le chemin DOIT impérativement commencer par l'UUID de l'utilisateur maker connecté pour satisfaire la RLS policy
+        const filePath = `${user.id}/${Date.now()}-${cleanFileName}`;
+
+        const { error: uploadError } = await supabaseClient.storage
+          .from('maker-articles-photos')
+          .upload(filePath, selectedFile, {
+            cacheControl: '3600',
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.error('Erreur Supabase Storage upload:', uploadError);
+          throw new Error(`Erreur lors de l'envoi de la photo : ${uploadError.message}`);
+        }
+
+        const { data: publicUrlData } = supabaseClient.storage
+          .from('maker-articles-photos')
+          .getPublicUrl(filePath);
+
+        if (publicUrlData?.publicUrl) {
+          photoUrlToSave = publicUrlData.publicUrl;
+        }
+      }
+
       if (editingArticle) {
         // Modification
         const { error: updateError } = await (supabaseClient
@@ -137,6 +201,7 @@ export default function MakerArticlesPage() {
             description: description.trim() || null,
             price: numPrice,
             is_active: isActiveForm,
+            photo_url: photoUrlToSave,
           })
           .eq('id', editingArticle.id)
           .eq('maker_id', user.id);
@@ -152,6 +217,7 @@ export default function MakerArticlesPage() {
                   description: description.trim() || null,
                   price: numPrice,
                   is_active: isActiveForm,
+                  photo_url: photoUrlToSave,
                 }
               : a
           )
@@ -168,6 +234,7 @@ export default function MakerArticlesPage() {
             description: description.trim() || null,
             price: numPrice,
             is_active: isActiveForm,
+            photo_url: photoUrlToSave,
           })
           .select()
           .single();
@@ -274,7 +341,7 @@ export default function MakerArticlesPage() {
             <span>Catalogue d'Articles</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Gérez vos objets et pièces 3D prêt-à-vendre (figurines, pièces de rechange, décorations...).
+            Gérez vos objets et pièces 3D prêts à vendre (figurines, pièces de rechange, décorations...).
           </p>
         </div>
 
@@ -401,6 +468,62 @@ export default function MakerArticlesPage() {
               />
             </div>
 
+            {/* Champ Photo d'illustration (Storage Supabase) */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <span>Photo d'illustration <span className="text-slate-500 font-normal">(optionnel)</span></span>
+                <span className="text-[10px] text-slate-500 font-mono">Max 5 Mo (JPG, PNG, WebP)</span>
+              </label>
+
+              {imagePreview ? (
+                <div className="relative w-full max-w-xs h-40 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 group">
+                  <img
+                    src={imagePreview}
+                    alt="Aperçu article"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <label className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Changer</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="p-2 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-lg text-xs font-semibold flex items-center gap-1 border border-rose-800/80 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Supprimer</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className="border-2 border-dashed border-slate-800 hover:border-emerald-500/50 bg-slate-950/50 hover:bg-slate-950 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors group">
+                  <div className="w-10 h-10 rounded-full bg-slate-800/80 group-hover:bg-emerald-950/80 text-slate-400 group-hover:text-emerald-400 flex items-center justify-center mb-2 transition-colors">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-medium text-slate-300 group-hover:text-emerald-300">
+                    Cliquez pour ajouter une photo
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5">
+                    Stockée de manière sécurisée dans votre espace Storage Supabase
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+
             {/* Toggle Visibilité */}
             <div className="flex items-center justify-between pt-2">
               <label className="text-xs font-medium text-slate-300 flex items-center gap-2 cursor-pointer">
@@ -413,7 +536,7 @@ export default function MakerArticlesPage() {
                 <button
                   type="button"
                   onClick={() => setIsActiveForm(!isActiveForm)}
-                  className="flex items-center gap-2 text-xs font-medium"
+                  className="flex items-center gap-2 text-xs font-medium cursor-pointer"
                 >
                   {isActiveForm ? (
                     <ToggleRight className="w-6 h-6 text-emerald-400" />
@@ -494,16 +617,29 @@ export default function MakerArticlesPage() {
                 }`}
               >
                 <div className="space-y-3">
+                  {/* Photo de l'article si elle existe */}
+                  {article.photo_url ? (
+                    <div className="w-full h-44 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 relative group/img">
+                      <img
+                        src={article.photo_url}
+                        alt={article.title}
+                        className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300"
+                      />
+                    </div>
+                  ) : null}
+
                   {/* En-tête de la carte */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
-                        article.is_active 
-                          ? 'bg-slate-800 border-slate-700 text-emerald-400' 
-                          : 'bg-slate-950 border-slate-800 text-slate-600'
-                      }`}>
-                        <Package className="w-5 h-5" />
-                      </div>
+                      {!article.photo_url && (
+                        <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                          article.is_active 
+                            ? 'bg-slate-800 border-slate-700 text-emerald-400' 
+                            : 'bg-slate-950 border-slate-800 text-slate-600'
+                        }`}>
+                          <Package className="w-5 h-5" />
+                        </div>
+                      )}
                       <div>
                         <h3 className="font-bold text-slate-100 text-sm leading-snug line-clamp-1">
                           {article.title}
