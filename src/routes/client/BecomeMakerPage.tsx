@@ -21,7 +21,7 @@ import { supabaseClient } from '../../lib/supabase-client';
 import { useUserRole } from '../../hooks/useUserRole';
 
 export default function BecomeMakerPage() {
-  const { user } = useUserRole();
+  const { user, refreshRole } = useUserRole();
   const navigate = useNavigate();
 
   const [businessName, setBusinessName] = useState('');
@@ -72,6 +72,9 @@ export default function BecomeMakerPage() {
       if (userError) {
         throw new Error(`Le profil a été créé, mais la mise à jour du rôle a échoué : ${userError.message}`);
       }
+
+      // 3. Rafraîchissement manuel du rôle dans le hook useUserRole avant la navigation
+      await refreshRole();
 
       // Succès - Redirection vers l'espace Maker
       navigate('/maker');

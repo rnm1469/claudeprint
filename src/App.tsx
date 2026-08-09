@@ -15,6 +15,7 @@ import ClientPage from './routes/client/ClientPage';
 import BecomeMakerPage from './routes/client/BecomeMakerPage';
 import MakerPage from './routes/maker/MakerPage';
 import AdminPage from './routes/admin/AdminPage';
+import MakerValidationPage from './routes/admin/MakerValidationPage';
 import DatabasePage from './routes/db/DatabasePage';
 import StructurePage from './routes/structure/StructurePage';
 
@@ -82,6 +83,14 @@ export default function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/makers"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <MakerValidationPage />
                 </ProtectedRoute>
               }
             />

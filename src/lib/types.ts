@@ -19,12 +19,16 @@ export interface User {
   created_at: string;
 }
 
+export type MakerStatus = 'pending' | 'approved' | 'rejected';
+
 export interface MakerProfile {
   id: string;
   business_name: string;
   bio?: string | null;
   city?: string | null;
+  status: MakerStatus;
   created_at: string;
+  email?: string | null;
 }
 
 export interface Database {
