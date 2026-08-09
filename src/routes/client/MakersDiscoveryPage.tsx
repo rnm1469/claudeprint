@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Printer, 
   Search, 
@@ -162,9 +163,10 @@ export default function MakersDiscoveryPage() {
       {!loading && !error && filteredMakers.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredMakers.map((maker) => (
-            <div
+            <Link
               key={maker.id}
-              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 flex flex-col justify-between space-y-4 transition-all hover:shadow-lg hover:shadow-emerald-950/20 group"
+              to={`/makers/${maker.id}`}
+              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 flex flex-col justify-between space-y-4 transition-all hover:shadow-lg hover:shadow-emerald-950/20 group cursor-pointer"
             >
               <div className="space-y-3">
                 {/* En-tête de la carte */}
@@ -217,7 +219,7 @@ export default function MakersDiscoveryPage() {
                   })}
                 </span>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

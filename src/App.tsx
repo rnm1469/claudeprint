@@ -14,6 +14,7 @@ import SignupPage from './routes/auth/SignupPage';
 import ClientPage from './routes/client/ClientPage';
 import BecomeMakerPage from './routes/client/BecomeMakerPage';
 import MakersDiscoveryPage from './routes/client/MakersDiscoveryPage';
+import MakerProfilePage from './routes/client/MakerProfilePage';
 import MakerPage from './routes/maker/MakerPage';
 import AdminPage from './routes/admin/AdminPage';
 import MakerValidationPage from './routes/admin/MakerValidationPage';
@@ -64,6 +65,14 @@ export default function App() {
               element={
                 <ProtectedRoute allowedRoles={['client', 'maker', 'admin']}>
                   <MakersDiscoveryPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/makers/:id"
+              element={
+                <ProtectedRoute allowedRoles={['client', 'maker', 'admin']}>
+                  <MakerProfilePage />
                 </ProtectedRoute>
               }
             />
