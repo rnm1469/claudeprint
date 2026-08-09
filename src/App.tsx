@@ -13,6 +13,7 @@ import LoginPage from './routes/auth/LoginPage';
 import SignupPage from './routes/auth/SignupPage';
 import ClientPage from './routes/client/ClientPage';
 import BecomeMakerPage from './routes/client/BecomeMakerPage';
+import MakersDiscoveryPage from './routes/client/MakersDiscoveryPage';
 import MakerPage from './routes/maker/MakerPage';
 import AdminPage from './routes/admin/AdminPage';
 import MakerValidationPage from './routes/admin/MakerValidationPage';
@@ -53,6 +54,16 @@ export default function App() {
               element={
                 <ProtectedRoute allowedRoles={['client', 'admin']}>
                   <ClientPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Découverte des Makers (accessible à tout utilisateur connecté) */}
+            <Route
+              path="/makers"
+              element={
+                <ProtectedRoute allowedRoles={['client', 'maker', 'admin']}>
+                  <MakersDiscoveryPage />
                 </ProtectedRoute>
               }
             />

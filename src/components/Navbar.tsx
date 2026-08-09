@@ -17,7 +17,8 @@ import {
   LogIn,
   UserPlus,
   LogOut,
-  UserCheck
+  UserCheck,
+  Users
 } from 'lucide-react';
 import { supabaseClient, isSupabaseConfigured } from '../lib/supabase-client';
 import { useUserRole } from '../hooks/useUserRole';
@@ -173,6 +174,18 @@ export default function Navbar() {
         >
           <ShoppingBag className="w-3.5 h-3.5" />
           <span>/client</span>
+        </NavLink>
+
+        <NavLink
+          to="/makers"
+          className={({ isActive }) => `flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 cursor-pointer ${
+            isActive
+              ? 'bg-teal-600 text-white shadow-lg shadow-teal-600/20'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>/makers</span>
         </NavLink>
 
         <NavLink
