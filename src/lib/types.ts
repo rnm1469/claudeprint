@@ -31,6 +31,16 @@ export interface MakerProfile {
   email?: string | null;
 }
 
+export interface MakerArticle {
+  id: string;
+  maker_id: string;
+  title: string;
+  description?: string | null;
+  price: number;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -43,6 +53,11 @@ export interface Database {
         Row: MakerProfile;
         Insert: Omit<MakerProfile, 'created_at'> & { created_at?: string };
         Update: Partial<Omit<MakerProfile, 'id'>>;
+      };
+      maker_articles: {
+        Row: MakerArticle;
+        Insert: Omit<MakerArticle, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Omit<MakerArticle, 'id' | 'maker_id'>>;
       };
     };
     Enums: {
