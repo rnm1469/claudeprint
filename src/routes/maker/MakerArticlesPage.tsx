@@ -165,21 +165,28 @@ export default function MakerArticlesPage() {
     try {
       let photoUrlToSave: string | null = imagePreview;
 
+      // Récupération directe de l'utilisateur authentifié depuis la session Supabase
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const currentUserId = authData?.user?.id || user.id;
+
       // Upload de la photo vers Supabase Storage si un nouveau fichier est sélectionné
       if (selectedFile) {
         const cleanFileName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        // Le chemin DOIT impérativement commencer par l'UUID de l'utilisateur maker connecté pour satisfaire la RLS policy
-        const filePath = `${user.id}/${Date.now()}-${cleanFileName}`;
+        // Le chemin DOIT impérativement commencer par l'UUID de l'utilisateur maker connecté ({currentUserId}) pour satisfaire la policy RLS
+        const filePath = `${currentUserId}/${Date.now()}-${cleanFileName}`;
 
         const { error: uploadError } = await supabaseClient.storage
           .from('maker-articles-photos')
           .upload(filePath, selectedFile, {
             cacheControl: '3600',
-            upsert: true
+            upsert: false
           });
 
         if (uploadError) {
           console.error('Erreur Supabase Storage upload:', uploadError);
+          if (uploadError.message?.includes('row-level security')) {
+            throw new Error(`Erreur RLS Storage : Veuillez exécuter la migration SQL dans Supabase (supabase/migrations/20260809_add_photo_url_to_maker_articles.sql) pour autoriser le bucket "maker-articles-photos".`);
+          }
           throw new Error(`Erreur lors de l'envoi de la photo : ${uploadError.message}`);
         }
 
