@@ -17,16 +17,20 @@ import {
   AlertCircle,
   FileQuestion,
   Sparkles,
-  Printer
+  Printer,
+  Package
 } from 'lucide-react';
 import { supabaseClient } from '../../lib/supabase-client';
-import type { MakerProfile } from '../../lib/types';
+import type { MakerProfile, MakerArticle } from '../../lib/types';
 
 export default function MakerProfilePage() {
   const { id } = useParams<{ id: string }>();
   const [maker, setMaker] = useState<MakerProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [articles, setArticles] = useState<MakerArticle[]>([]);
+  const [articlesLoading, setArticlesLoading] = useState<boolean>(true);
 
   useEffect(() => {
     async function fetchMakerProfile() {
@@ -38,6 +42,7 @@ export default function MakerProfilePage() {
 
       setLoading(true);
       setError(null);
+      setArticlesLoading(true);
 
       try {
         const { data, error: queryError } = await (supabaseClient
@@ -52,6 +57,26 @@ export default function MakerProfilePage() {
           setMaker(null);
         } else {
           setMaker(data as MakerProfile);
+
+          // Récupération des articles actifs du maker
+          try {
+            const { data: articlesData, error: articlesError } = await (supabaseClient
+              .from('maker_articles' as any) as any)
+              .select('*')
+              .eq('maker_id', id)
+              .eq('is_active', true)
+              .order('created_at', { ascending: false });
+
+            if (articlesError) {
+              console.error('Erreur lors du chargement des articles du Maker:', articlesError);
+            } else {
+              setArticles((articlesData as MakerArticle[]) || []);
+            }
+          } catch (artErr) {
+            console.error('Erreur lors de la récupération des articles:', artErr);
+          } finally {
+            setArticlesLoading(false);
+          }
         }
       } catch (err: unknown) {
         const errorObj = err as Error;
@@ -169,6 +194,73 @@ export default function MakerProfilePage() {
                 <p className="text-xs text-slate-500 italic bg-slate-950/40 p-4 rounded-xl border border-slate-800/40">
                   Cet atelier n'a pas encore rédigé de description détaillée.
                 </p>
+              )}
+            </div>
+
+            {/* Catalogue d'articles */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Catalogue de l'atelier
+              </h3>
+
+              {articlesLoading ? (
+                <div className="p-4 bg-slate-950/40 rounded-xl border border-slate-800/40 flex items-center gap-2 text-xs text-slate-400">
+                  <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
+                  <span>Chargement des articles du catalogue...</span>
+                </div>
+              ) : articles.length === 0 ? (
+                <p className="text-xs text-slate-500 italic bg-slate-950/40 p-4 rounded-xl border border-slate-800/40">
+                  Cet atelier n'a pas encore d'articles en catalogue.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {articles.map((article) => (
+                    <div
+                      key={article.id}
+                      className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xs hover:border-slate-700 transition-all flex flex-col justify-between"
+                    >
+                      {/* Zone photo */}
+                      {article.photo_url ? (
+                        <div className="w-full h-40 bg-slate-950 overflow-hidden relative">
+                          <img
+                            src={article.photo_url}
+                            alt={article.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full h-40 bg-slate-800/80 flex items-center justify-center text-slate-600">
+                          <Package className="w-8 h-8" />
+                        </div>
+                      )}
+
+                      {/* Détails de l'article */}
+                      <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-white line-clamp-1">
+                            {article.title}
+                          </h4>
+                          {article.description ? (
+                            <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                              {article.description}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-slate-500 italic">
+                              Pas de description.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-500 font-mono uppercase">Prix</span>
+                          <span className="text-emerald-400 font-bold font-mono text-sm">
+                            {article.price.toFixed(2)} €
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
