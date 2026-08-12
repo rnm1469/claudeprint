@@ -18,7 +18,11 @@ import {
   FileQuestion,
   Sparkles,
   Printer,
-  Package
+  Package,
+  X,
+  Upload,
+  Paperclip,
+  Clock
 } from 'lucide-react';
 import { supabaseClient } from '../../lib/supabase-client';
 import type { MakerProfile, MakerArticle } from '../../lib/types';
@@ -31,6 +35,15 @@ export default function MakerProfilePage() {
 
   const [articles, setArticles] = useState<MakerArticle[]>([]);
   const [articlesLoading, setArticlesLoading] = useState<boolean>(true);
+
+  // Devis state
+  const [hasPendingRequest, setHasPendingRequest] = useState<boolean>(false);
+  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState<boolean>(false);
+  const [quoteMessage, setQuoteMessage] = useState<string>('');
+  const [quoteFile, setQuoteFile] = useState<File | null>(null);
+  const [submittingQuote, setSubmittingQuote] = useState<boolean>(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'info'; message: string } | null>(null);
 
   useEffect(() => {
     async function fetchMakerProfile() {
@@ -77,6 +90,27 @@ export default function MakerProfilePage() {
           } finally {
             setArticlesLoading(false);
           }
+
+          // Vérification si le client a déjà une demande en statut 'pending' pour ce maker
+          try {
+            const { data: authData } = await supabaseClient.auth.getUser();
+            const currentUser = authData?.user;
+            if (currentUser) {
+              const { data: pendingReq } = await (supabaseClient
+                .from('quote_requests' as any) as any)
+                .select('id')
+                .eq('client_id', currentUser.id)
+                .eq('maker_id', id)
+                .eq('status', 'pending')
+                .maybeSingle();
+
+              if (pendingReq) {
+                setHasPendingRequest(true);
+              }
+            }
+          } catch (pendingErr) {
+            console.error('Erreur vérification demande en cours:', pendingErr);
+          }
         }
       } catch (err: unknown) {
         const errorObj = err as Error;
@@ -89,6 +123,95 @@ export default function MakerProfilePage() {
 
     fetchMakerProfile();
   }, [id]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Limite 20 Mo
+    if (file.size > 20 * 1024 * 1024) {
+      setQuoteError('La taille du fichier 3D ne doit pas dépasser 20 Mo.');
+      return;
+    }
+
+    setQuoteError(null);
+    setQuoteFile(file);
+  };
+
+  const handleSubmitQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+
+    setQuoteError(null);
+
+    const messageTrimmed = quoteMessage.trim();
+    if (!messageTrimmed && !quoteFile) {
+      setQuoteError('Veuillez saisir un message explicatif ou joindre un fichier 3D.');
+      return;
+    }
+
+    setSubmittingQuote(true);
+
+    try {
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const currentUser = authData?.user;
+
+      if (!currentUser) {
+        throw new Error('Vous devez être connecté pour envoyer une demande de devis.');
+      }
+
+      let filePath: string | null = null;
+
+      if (quoteFile) {
+        const cleanFileName = quoteFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        filePath = `${currentUser.id}/${Date.now()}-${cleanFileName}`;
+
+        const { error: uploadError } = await supabaseClient.storage
+          .from('devis-fichiers-3d')
+          .upload(filePath, quoteFile, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Erreur Storage devis-fichiers-3d upload:', uploadError);
+          throw new Error(`Erreur lors de l'envoi du fichier 3D : ${uploadError.message}`);
+        }
+      }
+
+      const { error: insertError } = await (supabaseClient
+        .from('quote_requests' as any) as any)
+        .insert({
+          client_id: currentUser.id,
+          maker_id: id,
+          message: messageTrimmed || null,
+          file_path: filePath,
+          status: 'pending'
+        });
+
+      if (insertError) {
+        console.error('Erreur enregistrement demande devis:', insertError);
+        throw new Error(`Erreur lors de la création de la demande : ${insertError.message}`);
+      }
+
+      setHasPendingRequest(true);
+      setIsQuoteModalOpen(false);
+      setQuoteMessage('');
+      setQuoteFile(null);
+      setToastMsg({
+        type: 'success',
+        message: 'Votre demande de devis a été envoyée avec succès à cet atelier !'
+      });
+
+      setTimeout(() => setToastMsg(null), 5000);
+    } catch (err: unknown) {
+      const errorObj = err as Error;
+      console.error('Échec envoi devis:', errorObj);
+      setQuoteError(errorObj.message || 'Impossible d\'envoyer votre demande de devis.');
+    } finally {
+      setSubmittingQuote(false);
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -131,6 +254,151 @@ export default function MakerProfilePage() {
               <ArrowLeft className="w-4 h-4" />
               <span>Explorer la liste des Makers</span>
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Toast message de confirmation */}
+      {toastMsg && (
+        <div
+          className={`p-4 rounded-xl border flex items-center justify-between text-xs font-medium shadow-lg animate-in fade-in duration-200 ${
+            toastMsg.type === 'success'
+              ? 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
+              : 'bg-blue-950/90 border-blue-800 text-blue-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{toastMsg.message}</span>
+          </div>
+          <button
+            onClick={() => setToastMsg(null)}
+            className="text-slate-400 hover:text-white text-xs font-bold px-2 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Modal / Formulaire de Demande de Devis */}
+      {isQuoteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 max-w-lg w-full shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white">
+                  Demande de devis sur mesure
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsQuoteModalOpen(false);
+                  setQuoteError(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Envoyez les détails de votre projet ou votre fichier 3D à l'atelier <span className="font-bold text-white">{maker?.business_name}</span>.
+            </p>
+
+            {quoteError && (
+              <div className="p-3 bg-red-950/80 border border-red-800 rounded-xl text-red-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{quoteError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitQuote} className="space-y-4">
+              {/* Message */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>Message / Instructions pour le Maker</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Optionnel</span>
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Décrivez votre besoin : dimensions souhaitées, quantité, matériau, couleur ou précision d'impression..."
+                  value={quoteMessage}
+                  onChange={(e) => setQuoteMessage(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 leading-relaxed"
+                />
+              </div>
+
+              {/* Fichier 3D */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>Fichier 3D (.stl, .obj, .3mf)</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Max 20 Mo</span>
+                </label>
+
+                {quoteFile ? (
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 overflow-hidden pr-2">
+                      <Paperclip className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="text-slate-200 font-medium truncate">{quoteFile.name}</span>
+                      <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                        ({(quoteFile.size / (1024 * 1024)).toFixed(2)} Mo)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQuoteFile(null)}
+                      className="text-slate-400 hover:text-rose-400 p-1 rounded-lg transition-colors cursor-pointer"
+                      title="Supprimer le fichier"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-slate-800 hover:border-emerald-500/50 bg-slate-950/50 hover:bg-slate-950 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors group">
+                    <Upload className="w-5 h-5 text-slate-500 group-hover:text-emerald-400 mb-1 transition-colors" />
+                    <span className="text-xs font-medium text-slate-300 group-hover:text-emerald-300">
+                      Cliquez pour joindre votre fichier 3D
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-0.5">
+                      Formats acceptés : STL, OBJ, 3MF
+                    </span>
+                    <input
+                      type="file"
+                      accept=".stl,.obj,.3mf"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* Boutons d'action */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsQuoteModalOpen(false);
+                    setQuoteError(null);
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingQuote}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  {submittingQuote ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                  <span>{submittingQuote ? 'Envoi en cours...' : 'Envoyer la demande'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -276,18 +544,25 @@ export default function MakerProfilePage() {
                 </p>
               </div>
 
-              {/* Bouton désactivé (placeholder) */}
+              {/* Bouton de demande de devis */}
               <div className="flex flex-col items-stretch sm:items-end gap-1 w-full sm:w-auto">
-                <button
-                  disabled
-                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 text-slate-400 border border-slate-700/60 rounded-xl text-xs font-bold opacity-60 cursor-not-allowed w-full sm:w-auto"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Demander un devis</span>
-                </button>
-                <span className="text-[10px] text-amber-400/90 font-mono text-center sm:text-right">
-                  ⚡ Fonctionnalité bientôt disponible
-                </span>
+                {hasPendingRequest ? (
+                  <button
+                    disabled
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 text-slate-300 border border-slate-700/60 rounded-xl text-xs font-bold opacity-80 cursor-not-allowed w-full sm:w-auto"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Demande déjà envoyée, en attente de réponse</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsQuoteModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-600/20 cursor-pointer w-full sm:w-auto"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Demander un devis</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
