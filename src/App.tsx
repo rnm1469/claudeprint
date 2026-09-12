@@ -12,6 +12,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './routes/auth/LoginPage';
 import SignupPage from './routes/auth/SignupPage';
 import ClientPage from './routes/client/ClientPage';
+import ClientQuoteRequestsPage from './routes/client/ClientQuoteRequestsPage';
 import BecomeMakerPage from './routes/client/BecomeMakerPage';
 import MakersDiscoveryPage from './routes/client/MakersDiscoveryPage';
 import MakerProfilePage from './routes/client/MakerProfilePage';
@@ -57,6 +58,14 @@ export default function App() {
               element={
                 <ProtectedRoute allowedRoles={['client', 'admin']}>
                   <ClientPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/client/devis"
+              element={
+                <ProtectedRoute allowedRoles={['client']}>
+                  <ClientQuoteRequestsPage />
                 </ProtectedRoute>
               }
             />
