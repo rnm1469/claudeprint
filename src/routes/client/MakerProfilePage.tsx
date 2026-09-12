@@ -37,7 +37,9 @@ export default function MakerProfilePage() {
   const [articlesLoading, setArticlesLoading] = useState<boolean>(true);
 
   // Devis state
-  const [hasPendingRequest, setHasPendingRequest] = useState<boolean>(false);
+  const [pendingArticleIds, setPendingArticleIds] = useState<Set<string>>(new Set());
+  const [hasGeneralPendingRequest, setHasGeneralPendingRequest] = useState<boolean>(false);
+  const [selectedArticleForQuote, setSelectedArticleForQuote] = useState<MakerArticle | null>(null);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState<boolean>(false);
   const [quoteMessage, setQuoteMessage] = useState<string>('');
   const [quoteFile, setQuoteFile] = useState<File | null>(null);
@@ -91,21 +93,32 @@ export default function MakerProfilePage() {
             setArticlesLoading(false);
           }
 
-          // Vérification si le client a déjà une demande en statut 'pending' pour ce maker
+          // Vérification si le client a déjà des demandes en statut 'pending' pour ce maker (générale ou par article)
           try {
             const { data: authData } = await supabaseClient.auth.getUser();
             const currentUser = authData?.user;
             if (currentUser) {
-              const { data: pendingReq } = await (supabaseClient
+              const { data: pendingReqs } = await (supabaseClient
                 .from('quote_requests' as any) as any)
-                .select('id')
+                .select('id, maker_article_id')
                 .eq('client_id', currentUser.id)
                 .eq('maker_id', id)
-                .eq('status', 'pending')
-                .maybeSingle();
+                .eq('status', 'pending');
 
-              if (pendingReq) {
-                setHasPendingRequest(true);
+              if (pendingReqs && Array.isArray(pendingReqs)) {
+                let hasGeneral = false;
+                const articleIdSet = new Set<string>();
+
+                pendingReqs.forEach((req: { id: string; maker_article_id?: string | null }) => {
+                  if (req.maker_article_id) {
+                    articleIdSet.add(req.maker_article_id);
+                  } else {
+                    hasGeneral = true;
+                  }
+                });
+
+                setHasGeneralPendingRequest(hasGeneral);
+                setPendingArticleIds(articleIdSet);
               }
             }
           } catch (pendingErr) {
@@ -136,6 +149,22 @@ export default function MakerProfilePage() {
 
     setQuoteError(null);
     setQuoteFile(file);
+  };
+
+  const openCustomQuoteModal = () => {
+    setSelectedArticleForQuote(null);
+    setQuoteMessage('');
+    setQuoteFile(null);
+    setQuoteError(null);
+    setIsQuoteModalOpen(true);
+  };
+
+  const openArticleQuoteModal = (article: MakerArticle) => {
+    setSelectedArticleForQuote(article);
+    setQuoteMessage(`Bonjour, je suis intéressé(e) par l'article "${article.title}". `);
+    setQuoteFile(null);
+    setQuoteError(null);
+    setIsQuoteModalOpen(true);
   };
 
   const handleSubmitQuote = async (e: React.FormEvent) => {
@@ -179,11 +208,14 @@ export default function MakerProfilePage() {
         }
       }
 
+      const articleIdToSave = selectedArticleForQuote?.id ?? null;
+
       const { error: insertError } = await (supabaseClient
         .from('quote_requests' as any) as any)
         .insert({
           client_id: currentUser.id,
           maker_id: id,
+          maker_article_id: articleIdToSave,
           message: messageTrimmed || null,
           file_path: filePath,
           status: 'pending'
@@ -194,8 +226,14 @@ export default function MakerProfilePage() {
         throw new Error(`Erreur lors de la création de la demande : ${insertError.message}`);
       }
 
-      setHasPendingRequest(true);
+      if (articleIdToSave) {
+        setPendingArticleIds((prev) => new Set(prev).add(articleIdToSave));
+      } else {
+        setHasGeneralPendingRequest(true);
+      }
+
       setIsQuoteModalOpen(false);
+      setSelectedArticleForQuote(null);
       setQuoteMessage('');
       setQuoteFile(null);
       setToastMsg({
@@ -288,12 +326,15 @@ export default function MakerProfilePage() {
               <div className="flex items-center gap-2">
                 <Printer className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-sm font-bold text-white">
-                  Demande de devis sur mesure
+                  {selectedArticleForQuote
+                    ? `Demande de devis — ${selectedArticleForQuote.title}`
+                    : 'Demande de devis sur mesure'}
                 </h3>
               </div>
               <button
                 onClick={() => {
                   setIsQuoteModalOpen(false);
+                  setSelectedArticleForQuote(null);
                   setQuoteError(null);
                 }}
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
@@ -303,7 +344,15 @@ export default function MakerProfilePage() {
             </div>
 
             <p className="text-xs text-slate-300">
-              Envoyez les détails de votre projet ou votre fichier 3D à l'atelier <span className="font-bold text-white">{maker?.business_name}</span>.
+              {selectedArticleForQuote ? (
+                <>
+                  Envoyez votre demande pour l'article <span className="font-bold text-white">"{selectedArticleForQuote.title}"</span> à l'atelier <span className="font-bold text-white">{maker?.business_name}</span>.
+                </>
+              ) : (
+                <>
+                  Envoyez les détails de votre projet ou votre fichier 3D à l'atelier <span className="font-bold text-white">{maker?.business_name}</span>.
+                </>
+              )}
             </p>
 
             {quoteError && (
@@ -379,6 +428,7 @@ export default function MakerProfilePage() {
                   type="button"
                   onClick={() => {
                     setIsQuoteModalOpen(false);
+                    setSelectedArticleForQuote(null);
                     setQuoteError(null);
                   }}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
@@ -482,52 +532,77 @@ export default function MakerProfilePage() {
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {articles.map((article) => (
-                    <div
-                      key={article.id}
-                      className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xs hover:border-slate-700 transition-all flex flex-col justify-between"
-                    >
-                      {/* Zone photo */}
-                      {article.photo_url ? (
-                        <div className="w-full h-40 bg-slate-950 overflow-hidden relative">
-                          <img
-                            src={article.photo_url}
-                            alt={article.title}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-full h-40 bg-slate-800/80 flex items-center justify-center text-slate-600">
-                          <Package className="w-8 h-8" />
-                        </div>
-                      )}
+                  {articles.map((article) => {
+                    const isArticlePending = pendingArticleIds.has(article.id);
 
-                      {/* Détails de l'article */}
-                      <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
-                        <div className="space-y-1">
-                          <h4 className="text-sm font-bold text-white line-clamp-1">
-                            {article.title}
-                          </h4>
-                          {article.description ? (
-                            <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                              {article.description}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-slate-500 italic">
-                              Pas de description.
-                            </p>
-                          )}
-                        </div>
+                    return (
+                      <div
+                        key={article.id}
+                        className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xs hover:border-slate-700 transition-all flex flex-col justify-between"
+                      >
+                        {/* Zone photo */}
+                        {article.photo_url ? (
+                          <div className="w-full h-40 bg-slate-950 overflow-hidden relative">
+                            <img
+                              src={article.photo_url}
+                              alt={article.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-full h-40 bg-slate-800/80 flex items-center justify-center text-slate-600">
+                            <Package className="w-8 h-8" />
+                          </div>
+                        )}
 
-                        <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
-                          <span className="text-[10px] text-slate-500 font-mono uppercase">Prix</span>
-                          <span className="text-emerald-400 font-bold font-mono text-sm">
-                            {article.price.toFixed(2)} €
-                          </span>
+                        {/* Détails de l'article */}
+                        <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-bold text-white line-clamp-1">
+                              {article.title}
+                            </h4>
+                            {article.description ? (
+                              <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                                {article.description}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-500 italic">
+                                Pas de description.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-800/60 flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] text-slate-500 font-mono uppercase">Prix</span>
+                              <span className="text-emerald-400 font-bold font-mono text-sm">
+                                {article.price.toFixed(2)} €
+                              </span>
+                            </div>
+
+                            {/* Bouton de demande de devis sur l'article */}
+                            {isArticlePending ? (
+                              <button
+                                disabled
+                                className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-1.5 bg-slate-800 text-slate-400 border border-slate-700/60 rounded-lg text-xs font-semibold opacity-75 cursor-not-allowed"
+                              >
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                <span>Déjà demandé</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openArticleQuoteModal(article)}
+                                className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                              >
+                                <Send className="w-3 h-3" />
+                                <span>Demander un devis</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -546,7 +621,7 @@ export default function MakerProfilePage() {
 
               {/* Bouton de demande de devis */}
               <div className="flex flex-col items-stretch sm:items-end gap-1 w-full sm:w-auto">
-                {hasPendingRequest ? (
+                {hasGeneralPendingRequest ? (
                   <button
                     disabled
                     className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 text-slate-300 border border-slate-700/60 rounded-xl text-xs font-bold opacity-80 cursor-not-allowed w-full sm:w-auto"
@@ -556,7 +631,7 @@ export default function MakerProfilePage() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => setIsQuoteModalOpen(true)}
+                    onClick={openCustomQuoteModal}
                     className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-600/20 cursor-pointer w-full sm:w-auto"
                   >
                     <Send className="w-3.5 h-3.5" />

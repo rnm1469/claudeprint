@@ -20,7 +20,9 @@ import {
   PackageCheck,
   Mail,
   Calendar,
-  Paperclip
+  Paperclip,
+  Tag,
+  Package
 } from 'lucide-react';
 import { supabaseClient } from '../../lib/supabase-client';
 
@@ -34,6 +36,7 @@ export interface QuoteRequest {
   status: 'pending' | 'accepted' | 'rejected' | 'completed';
   created_at: string;
   client_email?: string;
+  article_title?: string | null;
 }
 
 export default function MakerQuoteRequestsPage() {
@@ -90,13 +93,47 @@ export default function MakerQuoteRequestsPage() {
         }
       }
 
-      // Attach client email to quotes
-      const quotesWithEmail = fetchedQuotes.map((q) => ({
-        ...q,
-        client_email: clientEmailMap[q.client_id] || 'Client Inconnu'
-      }));
+      // Extract unique maker_article_ids to fetch article titles
+      const articleIds = Array.from(
+        new Set(
+          fetchedQuotes
+            .map((q) => q.maker_article_id)
+            .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        )
+      );
 
-      setQuotes(quotesWithEmail);
+      let articleTitleMap: Record<string, string> = {};
+
+      if (articleIds.length > 0) {
+        const { data: articlesData, error: articlesErr } = await (supabaseClient
+          .from('maker_articles' as any) as any)
+          .select('id, title')
+          .in('id', articleIds);
+
+        if (!articlesErr && articlesData) {
+          articlesData.forEach((a: { id: string; title: string }) => {
+            if (a.id && a.title) {
+              articleTitleMap[a.id] = a.title;
+            }
+          });
+        }
+      }
+
+      // Attach client email and article title to quotes
+      const quotesWithDetails = fetchedQuotes.map((q) => {
+        let articleTitle: string | null = null;
+        if (q.maker_article_id) {
+          articleTitle = articleTitleMap[q.maker_article_id] || "Article du catalogue (supprimé)";
+        }
+
+        return {
+          ...q,
+          client_email: clientEmailMap[q.client_id] || 'Client Inconnu',
+          article_title: articleTitle
+        };
+      });
+
+      setQuotes(quotesWithDetails);
     } catch (err: unknown) {
       const errorObj = err as Error;
       console.error("Erreur lors de la récupération des demandes de devis:", errorObj);
@@ -333,6 +370,18 @@ export default function MakerQuoteRequestsPage() {
 
                   <div>{renderStatusBadge(quote.status)}</div>
                 </div>
+
+                {/* Article concerné (si lié à un article du catalogue) */}
+                {quote.maker_article_id && (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/60 text-slate-300 text-xs px-2.5 py-1 rounded-lg">
+                      <Tag className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>
+                        Devis pour l'article : <strong className="text-white font-semibold">{quote.article_title || 'Article du catalogue (supprimé)'}</strong>
+                      </span>
+                    </span>
+                  </div>
+                )}
 
                 {/* Contenu : Message du client */}
                 <div className="space-y-1">
